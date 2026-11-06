@@ -10,10 +10,19 @@ import os
 import json
 import time
 import signal
+import socket
 import ctypes
 import traceback
 import urllib.request
 import urllib.error
+
+# Ensure only one instance of the monitor can run at a time
+instance_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    instance_lock_socket.bind(("127.0.0.1", 47823))
+except socket.error:
+    # Another instance is already active
+    sys.exit(0)
 
 # Ensure pythonw.exe doesn't crash on stdout/stderr calls
 class NullWriter:
@@ -226,7 +235,7 @@ class GameSenseClient:
             url, data=body, headers={"Content-Type": "application/json"}
         )
         try:
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
                 return resp.status == 200
         except Exception:
             return False
@@ -249,6 +258,7 @@ class GameSenseClient:
             return False
 
         # 2. Bind OLED Screen Handler
+        # length-millis: 3000 keeps the frame continuously visible between 1.5s updates
         bind_ok = self.post("bind_game_event", {
             "game": self.GAME_NAME,
             "event": self.EVENT_NAME,
@@ -259,6 +269,7 @@ class GameSenseClient:
                     "mode": "screen",
                     "datas": [
                         {
+                            "length-millis": 3000,
                             "lines": [
                                 {
                                     "has-text": True,
@@ -434,6 +445,7 @@ def main():
     connected = False
     lhm_warned = False
     was_sleeping = False
+    fail_count = 0
 
     log("Checking connection to SteelSeries GG (Engine)...")
 
@@ -496,10 +508,15 @@ def main():
             # Push to OLED
             success = client.send_frame(final_line1, final_line2)
             if not success:
-                log("[Warning] Lost connection to SteelSeries GG. Re-establishing...")
-                connected = False
-                time.sleep(1)
-                continue
+                fail_count += 1
+                if fail_count >= 3:
+                    log("[Warning] Failed to push frame 3 times in a row. Re-establishing connection...")
+                    connected = False
+                    fail_count = 0
+                    time.sleep(1)
+                    continue
+            else:
+                fail_count = 0
 
             # Console status line
             safe_print(f"\r[OLED Display] L1: '{final_line1:<14}' | L2: '{final_line2:<14}'", end="", flush=True)
