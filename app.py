@@ -300,7 +300,6 @@ class GameSenseClient:
 
         # 2. Bind OLED Screen Handler across all supported screened device types
         screen_frame = {
-            "length-millis": 3000,
             "lines": [
                 {
                     "has-text": True,
@@ -314,7 +313,17 @@ class GameSenseClient:
         }
 
         handlers = []
-        for dev in ["screened", "screened-2-lines", "screened-128x52", "screened-128x48"]:
+        target_devices = [
+            "screened-3-lines-or-more-2-lines",
+            "screened-3-lines-or-more-3-lines-or-more",
+            "screened",
+            "screened-2-lines",
+            "screened-128x64",
+            "screened-128x52",
+            "screened-128x48",
+            "screened-128x40"
+        ]
+        for dev in target_devices:
             handlers.append({
                 "device-type": dev,
                 "zone": "one",
