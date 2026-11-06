@@ -16,14 +16,6 @@ import traceback
 import urllib.request
 import urllib.error
 
-# Ensure only one instance of the monitor can run at a time
-instance_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    instance_lock_socket.bind(("127.0.0.1", 47823))
-except socket.error:
-    # Another instance is already active
-    sys.exit(0)
-
 # Ensure pythonw.exe doesn't crash on stdout/stderr calls
 class NullWriter:
     def write(self, s):
@@ -35,6 +27,17 @@ if sys.stdout is None:
     sys.stdout = NullWriter()
 if sys.stderr is None:
     sys.stderr = NullWriter()
+
+instance_lock_socket = None
+
+def acquire_instance_lock():
+    global instance_lock_socket
+    instance_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        instance_lock_socket.bind(("127.0.0.1", 47823))
+        return True
+    except socket.error:
+        return False
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor.log")
 
@@ -103,6 +106,9 @@ class HardwareMonitor:
         self.last_kernel = 0
         self.last_user = 0
         self._init_cpu_times()
+        self.cached_cpu_temp = None
+        self.cached_gpu_temp = None
+        self.last_temp_time = 0
 
     def _init_cpu_times(self):
         try:
@@ -157,42 +163,74 @@ class HardwareMonitor:
 
     def get_temperatures_from_lhm(self):
         """
-        Queries LibreHardwareMonitor / OpenHardwareMonitor web server.
-        Returns (cpu_temp_c, gpu_temp_c) or (None, None).
+        Queries LibreHardwareMonitor web server.
+        Returns (cpu_temp_c, gpu_temp_c) or cached/fallback values.
         """
+        data = None
         try:
             req = urllib.request.Request(self.lhm_url, headers={'User-Agent': 'SteelSeriesMonitor/1.0'})
-            with urllib.request.urlopen(req, timeout=0.25) as response:
+            with urllib.request.urlopen(req, timeout=1.0) as response:
                 data = json.loads(response.read().decode('utf-8'))
         except Exception:
-            return None, None
+            data = None
 
         cpu_temp = None
         gpu_temp = None
 
-        def crawl(node):
-            nonlocal cpu_temp, gpu_temp
-            text = node.get("Text", "")
-            children = node.get("Children", [])
+        if data:
+            def crawl(node, hw_type=None):
+                nonlocal cpu_temp, gpu_temp
+                text = node.get("Text", "")
+                hid = node.get("HardwareId", "").lower()
+                t_lower = text.lower()
 
-            if "Temperatures" in text or node.get("SensorType") == "Temperature":
-                for child in children:
-                    c_text = child.get("Text", "")
-                    val_str = child.get("Value", "")
-                    if "°C" in val_str:
-                        try:
-                            val = float(val_str.split()[0].replace(',', '.'))
-                            if cpu_temp is None and any(k in c_text.lower() for k in ["package", "average", "cpu", "tctl"]):
-                                cpu_temp = int(round(val))
-                            if gpu_temp is None and any(k in c_text.lower() for k in ["gpu core", "edge", "hot spot", "gpu temp"]):
+                # Detect hardware category
+                if "/gpu" in hid or any(k in t_lower for k in ["radeon", "geforce", "nvidia", "intel arc"]) or (t_lower.startswith("gpu") and not hw_type):
+                    hw_type = "gpu"
+                elif "/cpu" in hid or any(k in t_lower for k in ["intel core", "amd ryzen", "intel pentium", "intel celeron"]) or (t_lower.startswith("cpu") and not hw_type):
+                    hw_type = "cpu"
+
+                val_str = node.get("Value", "")
+                stype = node.get("Type", "")
+
+                if ("°C" in val_str or stype == "Temperature") and val_str:
+                    try:
+                        val = float(val_str.split()[0].replace(',', '.'))
+                        if hw_type == "gpu":
+                            if "core" in t_lower or "edge" in t_lower or "gpu" in t_lower:
                                 gpu_temp = int(round(val))
-                        except ValueError:
-                            pass
+                            elif gpu_temp is None:
+                                gpu_temp = int(round(val))
+                        elif hw_type == "cpu":
+                            if any(k in t_lower for k in ["package", "average", "core max", "tctl"]):
+                                if cpu_temp is None or "package" in t_lower or "average" in t_lower:
+                                    cpu_temp = int(round(val))
+                            elif cpu_temp is None:
+                                cpu_temp = int(round(val))
+                    except (ValueError, IndexError):
+                        pass
 
-            for child in children:
-                crawl(child)
+                for child in node.get("Children", []):
+                    crawl(child, hw_type)
 
-        crawl(data)
+            crawl(data)
+
+        # Update cache if valid values received
+        now = time.time()
+        if cpu_temp is not None:
+            self.cached_cpu_temp = cpu_temp
+        if gpu_temp is not None:
+            self.cached_gpu_temp = gpu_temp
+        if cpu_temp is not None or gpu_temp is not None:
+            self.last_temp_time = now
+
+        # Use cached values during boot/slow poll if last update was within 15 seconds
+        if (now - self.last_temp_time) < 15.0:
+            if cpu_temp is None:
+                cpu_temp = self.cached_cpu_temp
+            if gpu_temp is None:
+                gpu_temp = self.cached_gpu_temp
+
         return cpu_temp, gpu_temp
 
 # ---------------------------------------------------------------------------
@@ -262,6 +300,7 @@ class GameSenseClient:
 
         # 2. Bind OLED Screen Handler across all supported screened device types
         screen_frame = {
+            "length-millis": 3000,
             "lines": [
                 {
                     "has-text": True,
@@ -425,6 +464,10 @@ def ensure_lhm_running(lhm_path, lhm_url="http://localhost:8085/data.json"):
         log(f"[Warning] Could not autostart LibreHardwareMonitor: {e}")
 
 def main():
+    if not acquire_instance_lock():
+        # Another instance is already active
+        sys.exit(0)
+
     log("=" * 60)
     log("SteelSeries Arctis Nova / GameDAC OLED Hardware Monitor Started")
     log("=" * 60)
@@ -452,6 +495,7 @@ def main():
     lhm_warned = False
     was_sleeping = False
     fail_count = 0
+    sensors_logged = False
 
     log("Checking connection to SteelSeries GG (Engine)...")
 
@@ -490,6 +534,10 @@ def main():
             used_ram, total_ram, _ = hw.get_ram_info()
             cpu_load = hw.get_cpu_load()
             cpu_temp, gpu_temp = hw.get_temperatures_from_lhm()
+
+            if not sensors_logged and (cpu_temp is not None and gpu_temp is not None):
+                log(f"[OK] Hardware sensors online: CPU Temp={cpu_temp}°C, GPU Temp={gpu_temp}°C")
+                sensors_logged = True
 
             # Format Line 1: CPU & GPU Temps
             if cpu_temp is not None or gpu_temp is not None:
