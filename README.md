@@ -7,10 +7,11 @@
 A lightweight, zero-dependency background utility for Windows that streams real-time PC hardware metrics directly to the OLED display on **SteelSeries Arctis Nova Pro / Elite** base stations and **GameDAC** controllers via the official SteelSeries GameSense SDK.
 
 ```
-┌─────────────────────────────────┐
-│ C:58°  G:64°                    │  <- Line 1: CPU & GPU Temperatures
-│ RAM: 15.6/32G                   │  <- Line 2: RAM Usage (Used / Total)
-└─────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  C78° G52°     ╭──────╮              │  <- Line 1: CPU & GPU Temperatures
+│  15.6/32G      │ VOL  │              │  <- Line 2: RAM Usage (Used / Total)
+│                ╰──────╯              │     (Fits next to native volume dial)
+└──────────────────────────────────────┘
 ```
 
 ---
@@ -18,7 +19,8 @@ A lightweight, zero-dependency background utility for Windows that streams real-
 ## ✨ Features
 
 - **Real-Time CPU & GPU Temperatures**: Supports modern Intel and AMD hardware (tested on 12th Gen Intel Core and AMD Radeon RX 6000/7000 series) via local [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) integration.
-- **Clean, No-Clipped RAM Display**: Formats RAM usage compactly (`RAM: x/32G`) to fit the 128px OLED screen perfectly without text truncation.
+- **Tailored 9-Character Nova Pro HUD**: Text is formatted compactly (`C85° G53°` and `15.6/32G`) to sit cleanly to the left of the hardware `VOL` dial without being obscured or clipped.
+- **Anti-Caching Volume Auto-Recovery**: Uses monotonically incrementing frame sequence counters and `value_optional: true` so adjusting volume or navigating menus automatically snaps back to PC metrics within 1–2 seconds.
 - **Zero External Python Dependencies**: Built entirely using Python's standard library and native Windows `ctypes` (`GlobalMemoryStatusEx`, `GetSystemTimes`, `GetLastInputInfo`). No `pip install` required.
 - **🛡️ 3-Layer OLED Burn-in Protection**:
   1. **Horizontal Pixel Shifting (Jitter)**: Automatically shifts text coordinates every 60 seconds to rest static phosphor/OLED subpixels.
@@ -49,6 +51,23 @@ A lightweight, zero-dependency background utility for Windows that streams real-
    - **Interactive Console**: Double-click `start.bat`
    - **Silent Background**: Double-click `start_silent.vbs`
 4. Check your controller's OLED screen — your live metrics will appear immediately!
+
+---
+
+## 🎧 Arctis Nova Pro / GameDAC Base Station Setup
+
+To ensure GameSense text displays properly on the Arctis Nova Pro Wireless Base Station / GameDAC Gen 2:
+
+1. **Set Home Screen to "Preset"**:
+   - Press and hold the main volume wheel on the base station until you enter **Settings**.
+   - Navigate to **Display** ➔ **Home Screen** (or **Home Screen Options**).
+   - Scroll to **Preset** and **press the wheel in** to confirm the selection.
+   - Tap the **`○` (Back)** circle button to exit to the home screen.
+   *(Note: `Stereo` mode displays audio sample rate and L/R sound meters; `Meters` displays 4 stream mix bars. `Preset` activates the 2 custom text lines where this monitor renders).*
+2. **Volume Adjustments & Menu Navigation**:
+   - Turning the dial temporarily displays hardware volume.
+   - Entering settings temporarily pauses app display.
+   - Once you let go or exit back to the home screen, the monitor **automatically snaps back within 1–2 seconds**.
 
 ---
 
