@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Logs and outputs
+*.log
+*.txt
+
+# OS metadata
+Thumbs.db
+Desktop.ini

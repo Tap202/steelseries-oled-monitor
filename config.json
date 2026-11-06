@@ -1,0 +1,16 @@
+{
+    "refresh_interval_sec": 1.5,
+    "lhm_url": "http://localhost:8085/data.json",
+    "lhm_exe_path": "C:\\Program Files\\LibreHardwareMonitor\\LibreHardwareMonitor.exe",
+    "autostart_lhm": false,
+    "ram_show_decimal": true,
+    "burn_in_protection": {
+        "enabled": true,
+        "pixel_shift_enabled": true,
+        "pixel_shift_interval_sec": 60,
+        "swap_lines_enabled": true,
+        "swap_lines_interval_sec": 180,
+        "idle_sleep_enabled": true,
+        "idle_sleep_minutes": 5
+    }
+}
