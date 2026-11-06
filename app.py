@@ -549,22 +549,22 @@ def main():
                 log(f"[OK] Hardware sensors online: CPU Temp={cpu_temp}°C, GPU Temp={gpu_temp}°C")
                 sensors_logged = True
 
-            # Format Line 1: CPU & GPU Temps
+            # Format Line 1: CPU & GPU Temps (compact format tailored to fit Nova Pro GameDAC VOL HUD)
             if cpu_temp is not None or gpu_temp is not None:
-                c_str = f"C:{cpu_temp}°" if cpu_temp is not None else f"C:{cpu_load}%"
-                g_str = f"G:{gpu_temp}°" if gpu_temp is not None else "G:--"
-                line_temps = f"{c_str}  {g_str}"
+                c_str = f"C{cpu_temp}°" if cpu_temp is not None else f"C{cpu_load}%"
+                g_str = f"G{gpu_temp}°" if gpu_temp is not None else "G--"
+                line_temps = f"{c_str} {g_str}"
             else:
-                line_temps = f"CPU:{cpu_load}% GPU:--"
+                line_temps = f"CPU {cpu_load}%"
                 if not lhm_warned:
                     safe_print("[Info] For live CPU/GPU temps, run LibreHardwareMonitor with 'Remote Web Server' enabled.")
                     lhm_warned = True
 
-            # Format Line 2: RAM usage (clean x/32G without the % per user request)
+            # Format Line 2: RAM usage (compact format fitting next to VOL dial, e.g. 13.8/32G)
             if config.get("ram_show_decimal", True):
-                line_ram = f"RAM: {used_ram:.1f}/{total_ram:.0f}G"
+                line_ram = f"{used_ram:.1f}/{total_ram:.0f}G"
             else:
-                line_ram = f"RAM: {int(round(used_ram))}/{total_ram:.0f}G"
+                line_ram = f"{int(round(used_ram))}/{total_ram:.0f}G"
 
             # Apply burn-in protection (pixel shifting & line alternating)
             final_line1, final_line2 = protector.apply_protection(line_temps, line_ram)
