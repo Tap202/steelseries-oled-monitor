@@ -87,8 +87,11 @@ def get_idle_seconds():
         lii = LASTINPUTINFO()
         lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
         if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
-            millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
-            return max(0.0, millis / 1000.0)
+            if lii.dwTime == 0:
+                return 0.0
+            curr_tick = ctypes.windll.kernel32.GetTickCount()
+            millis = (curr_tick - lii.dwTime) & 0xFFFFFFFF
+            return millis / 1000.0
     except Exception:
         pass
     return 0.0
@@ -257,33 +260,33 @@ class GameSenseClient:
         if not meta_ok:
             return False
 
-        # 2. Bind OLED Screen Handler
-        # length-millis: 3000 keeps the frame continuously visible between 1.5s updates
+        # 2. Bind OLED Screen Handler across all supported screened device types
+        screen_frame = {
+            "lines": [
+                {
+                    "has-text": True,
+                    "context-frame-key": "line1"
+                },
+                {
+                    "has-text": True,
+                    "context-frame-key": "line2"
+                }
+            ]
+        }
+
+        handlers = []
+        for dev in ["screened", "screened-2-lines", "screened-128x52", "screened-128x48"]:
+            handlers.append({
+                "device-type": dev,
+                "zone": "one",
+                "mode": "screen",
+                "datas": [screen_frame]
+            })
+
         bind_ok = self.post("bind_game_event", {
             "game": self.GAME_NAME,
             "event": self.EVENT_NAME,
-            "handlers": [
-                {
-                    "device-type": "screened",
-                    "zone": "one",
-                    "mode": "screen",
-                    "datas": [
-                        {
-                            "length-millis": 3000,
-                            "lines": [
-                                {
-                                    "has-text": True,
-                                    "context-frame-key": "line1"
-                                },
-                                {
-                                    "has-text": True,
-                                    "context-frame-key": "line2"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
+            "handlers": handlers
         })
         return bind_ok
 
@@ -332,6 +335,9 @@ class BurnInProtector:
     def check_idle_sleep(self):
         """Returns True if display should be put to sleep (blanked) due to inactivity."""
         if not self.enabled or not self.idle_sleep_enabled:
+            return False
+        # Grace period: never sleep in the first 2 minutes after launch/reboot
+        if (time.time() - self.start_time) < 120:
             return False
         idle_time = get_idle_seconds()
         return idle_time >= self.idle_sleep_sec
@@ -472,12 +478,12 @@ def main():
                 if not was_sleeping:
                     # Blank the OLED screen completely (pure black = LEDs off)
                     client.send_frame("", "")
-                    safe_print("\r[OLED Burn-in Protection] Inactivity detected. OLED display sleeping (LEDs OFF)...", end="", flush=True)
+                    log("[OLED Burn-in Protection] Inactivity detected. OLED display sleeping (LEDs OFF)...")
                     was_sleeping = True
                 time.sleep(1.0)
                 continue
             elif was_sleeping:
-                safe_print("\r[OLED Burn-in Protection] User activity detected! Waking display...                    ", end="", flush=True)
+                log("[OLED Burn-in Protection] User activity detected! Waking display...")
                 was_sleeping = False
 
             # Gather metrics
