@@ -335,16 +335,20 @@ class GameSenseClient:
         bind_ok = self.post("bind_game_event", {
             "game": self.GAME_NAME,
             "event": self.EVENT_NAME,
+            "value_optional": True,
             "handlers": handlers
         })
         return bind_ok
 
     def send_frame(self, line1, line2):
-        """Sends a 2-line frame update to the OLED screen."""
+        """Sends a 2-line frame update to the OLED screen with an incrementing counter to bypass engine caching."""
+        self.frame_counter = (getattr(self, "frame_counter", 0) + 1) % 1000000
         payload = {
             "game": self.GAME_NAME,
             "event": self.EVENT_NAME,
+            "value": self.frame_counter,
             "data": {
+                "value": self.frame_counter,
                 "frame": {
                     "line1": line1,
                     "line2": line2
