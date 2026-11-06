@@ -13,6 +13,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+echo Stopping any existing background instances...
+taskkill /f /im pythonw.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+
 python app.py
 if %errorlevel% neq 0 (
     echo.

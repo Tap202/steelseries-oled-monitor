@@ -293,7 +293,8 @@ class GameSenseClient:
             "game": self.GAME_NAME,
             "game_display_name": self.GAME_DISPLAY_NAME,
             "developer": "Antigravity",
-            "deinitialize_timer_length_ms": 60000
+            "deinitialize_timer_length_ms": 60000,
+            "enabled": True
         })
         if not meta_ok:
             return False
