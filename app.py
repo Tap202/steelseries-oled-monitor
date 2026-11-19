@@ -462,8 +462,6 @@ def load_config():
 
 def ensure_lhm_running(lhm_path, lhm_url="http://localhost:8085/data.json"):
     """Launches LibreHardwareMonitor if its web server is not already answering."""
-    if not lhm_path or not os.path.exists(lhm_path):
-        return
     try:
         req = urllib.request.Request(lhm_url, headers={'User-Agent': 'SteelSeriesMonitor/1.0'})
         with urllib.request.urlopen(req, timeout=0.3):
@@ -471,11 +469,23 @@ def ensure_lhm_running(lhm_path, lhm_url="http://localhost:8085/data.json"):
     except Exception:
         pass
 
+    # 1. Prefer silent elevated execution via Windows Task Scheduler (no UAC prompt)
     try:
-        log(f"[Autostart] Launching LibreHardwareMonitor from {lhm_path}...")
-        os.startfile(lhm_path)
-    except Exception as e:
-        log(f"[Warning] Could not autostart LibreHardwareMonitor: {e}")
+        import subprocess
+        res = subprocess.run(["schtasks", "/run", "/tn", "LibreHardwareMonitor"], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            log("[Watchdog] Triggered 'LibreHardwareMonitor' Scheduled Task silently.")
+            return
+    except Exception:
+        pass
+
+    # 2. Fallback to direct execution if task is not found
+    if lhm_path and os.path.exists(lhm_path):
+        try:
+            log(f"[Autostart] Launching LibreHardwareMonitor from {lhm_path}...")
+            os.startfile(lhm_path)
+        except Exception as e:
+            log(f"[Warning] Could not autostart LibreHardwareMonitor: {e}")
 
 def main():
     if not acquire_instance_lock():
@@ -510,6 +520,7 @@ def main():
     was_sleeping = False
     fail_count = 0
     sensors_logged = False
+    last_lhm_attempt = 0
 
     log("Checking connection to SteelSeries GG (Engine)...")
 
@@ -548,6 +559,13 @@ def main():
             used_ram, total_ram, _ = hw.get_ram_info()
             cpu_load = hw.get_cpu_load()
             cpu_temp, gpu_temp = hw.get_temperatures_from_lhm()
+
+            # Automatic watchdog: if temperatures are unavailable, trigger silent recovery every 30s
+            if cpu_temp is None and gpu_temp is None:
+                now_t = time.time()
+                if now_t - last_lhm_attempt > 30.0:
+                    last_lhm_attempt = now_t
+                    ensure_lhm_running(config.get("lhm_exe_path"), config.get("lhm_url", "http://localhost:8085/data.json"))
 
             if not sensors_logged and (cpu_temp is not None and gpu_temp is not None):
                 log(f"[OK] Hardware sensors online: CPU Temp={cpu_temp}°C, GPU Temp={gpu_temp}°C")
